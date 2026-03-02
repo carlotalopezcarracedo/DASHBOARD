@@ -122,12 +122,60 @@ projectsRouter.post("/", (req, res) => {
   res.json(newProject);
 });
 
+projectsRouter.put("/:id", (req, res) => {
+  const { client_id, nombre_proyecto, tipo, estado, fecha_inicio, fecha_entrega_objetivo, prioridad } = req.body;
+  const project = db.prepare("SELECT * FROM projects WHERE id = ?").get(req.params.id) as any;
+
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  db.prepare(`
+    UPDATE projects
+    SET client_id = ?, nombre_proyecto = ?, tipo = ?, estado = ?, fecha_inicio = ?, fecha_entrega_objetivo = ?, prioridad = ?
+    WHERE id = ?
+  `).run(
+    client_id !== undefined ? client_id : project.client_id,
+    nombre_proyecto !== undefined ? nombre_proyecto : project.nombre_proyecto,
+    tipo !== undefined ? tipo : project.tipo,
+    estado !== undefined ? estado : project.estado,
+    fecha_inicio !== undefined ? fecha_inicio : project.fecha_inicio,
+    fecha_entrega_objetivo !== undefined ? fecha_entrega_objetivo : project.fecha_entrega_objetivo,
+    prioridad !== undefined ? prioridad : project.prioridad,
+    req.params.id
+  );
+
+  const updatedProject = db.prepare(`
+    SELECT p.*, c.nombre_cliente, c.nombre_negocio
+    FROM projects p
+    LEFT JOIN clients c ON p.client_id = c.id
+    WHERE p.id = ?
+  `).get(req.params.id);
+
+  logActivity("project", req.params.id, "actualizar", (req as any).user?.email || "system", `Proyecto actualizado: ${updatedProject ? (updatedProject as any).nombre_proyecto : req.params.id}`);
+
+  if (estado !== undefined && estado !== project.estado) {
+    logActivity("project", req.params.id, "actualizar_estado", (req as any).user?.email || "system", `Estado cambiado a: ${estado}`);
+  }
+
+  res.json(updatedProject);
+});
+
 projectsRouter.put("/:id/status", (req, res) => {
   const { estado } = req.body;
   db.prepare("UPDATE projects SET estado = ? WHERE id = ?").run(estado, req.params.id);
   
   logActivity("project", req.params.id, "actualizar_estado", (req as any).user?.email || "system", `Estado cambiado a: ${estado}`);
   
+  res.json({ success: true });
+});
+
+projectsRouter.delete("/:id", (req, res) => {
+  const project = db.prepare("SELECT * FROM projects WHERE id = ?").get(req.params.id) as any;
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  db.prepare("DELETE FROM projects WHERE id = ?").run(req.params.id);
+
+  logActivity("project", req.params.id, "eliminar", (req as any).user?.email || "system", `Proyecto eliminado: ${project.nombre_proyecto}`);
+
   res.json({ success: true });
 });
 

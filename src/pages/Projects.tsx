@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/auth';
-import { Plus, LayoutGrid, List, CheckSquare, ChevronDown, ChevronRight, MoreVertical, Clock, Building2, Calendar } from 'lucide-react';
+import { Plus, LayoutGrid, List, CheckSquare, ChevronDown, ChevronRight, MoreVertical, Clock, Building2, Pencil, Trash2 } from 'lucide-react';
 import { formatDate } from '../lib/utils';
 import Modal from '../components/Modal';
 
@@ -13,6 +13,7 @@ export default function Projects() {
   const [isChecklistModalOpen, setIsChecklistModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any>(null);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [checklists, setChecklists] = useState<any[]>([]);
   const [projectHistory, setProjectHistory] = useState<any[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
@@ -35,26 +36,69 @@ export default function Projects() {
       .then(data => setClients(data));
   }, [token]);
 
+  const resetProjectForm = () => {
+    setFormData({
+      client_id: '',
+      nombre_proyecto: '',
+      tipo: 'automatizacion_interna',
+      estado: 'en_propuesta',
+      prioridad: 'media',
+      fecha_entrega_objetivo: ''
+    });
+    setEditingProjectId(null);
+  };
+
+  const openCreateProjectModal = () => {
+    resetProjectForm();
+    setIsModalOpen(true);
+  };
+
+  const openEditProjectModal = (project: any) => {
+    setEditingProjectId(project.id);
+    setFormData({
+      client_id: project.client_id || '',
+      nombre_proyecto: project.nombre_proyecto || '',
+      tipo: project.tipo || 'automatizacion_interna',
+      estado: project.estado || 'en_propuesta',
+      prioridad: project.prioridad || 'media',
+      fecha_entrega_objetivo: project.fecha_entrega_objetivo || ''
+    });
+    setIsDetailsModalOpen(false);
+    setIsModalOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/projects', {
-      method: 'POST',
+    const isEditing = !!editingProjectId;
+    const endpoint = isEditing ? `/api/projects/${editingProjectId}` : '/api/projects';
+    const method = isEditing ? 'PUT' : 'POST';
+
+    const res = await fetch(endpoint, {
+      method,
       headers: { 
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}` 
       },
       body: JSON.stringify({
         ...formData,
-        fecha_inicio: new Date().toISOString().split('T')[0]
+        fecha_inicio: isEditing ? selectedProject?.fecha_inicio : new Date().toISOString().split('T')[0]
       })
     });
     
     if (res.ok) {
-      const newProject = await res.json();
-      const client = clients.find(c => c.id === newProject.client_id);
-      setProjects([{...newProject, nombre_cliente: client?.nombre_cliente}, ...projects]);
+      const savedProject = await res.json();
+      if (isEditing) {
+        setProjects((prev) => prev.map((p) => (p.id === savedProject.id ? savedProject : p)));
+        if (selectedProject && selectedProject.id === savedProject.id) {
+          setSelectedProject(savedProject);
+          fetchProjectHistory(savedProject.id);
+        }
+      } else {
+        const client = clients.find((c) => c.id === savedProject.client_id);
+        setProjects((prev) => [{ ...savedProject, nombre_cliente: client?.nombre_cliente }, ...prev]);
+      }
       setIsModalOpen(false);
-      setFormData({ client_id: '', nombre_proyecto: '', tipo: 'automatizacion_interna', estado: 'en_propuesta', prioridad: 'media', fecha_entrega_objetivo: '' });
+      resetProjectForm();
     }
   };
 
@@ -91,6 +135,27 @@ export default function Projects() {
     setSelectedProject(project);
     setIsDetailsModalOpen(true);
     fetchProjectHistory(project.id);
+  };
+
+  const handleDeleteProject = async (project: any) => {
+    const confirmed = window.confirm(`¿Seguro que quieres eliminar el proyecto "${project.nombre_proyecto}"? Esta acción no se puede deshacer.`);
+    if (!confirmed) return;
+
+    const res = await fetch(`/api/projects/${project.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!res.ok) return;
+
+    setProjects((prev) => prev.filter((p) => p.id !== project.id));
+    if (selectedProject && selectedProject.id === project.id) {
+      setSelectedProject(null);
+      setProjectHistory([]);
+      setChecklists([]);
+      setIsChecklistModalOpen(false);
+      setIsDetailsModalOpen(false);
+    }
   };
 
   const openChecklist = async (project: any) => {
@@ -192,7 +257,7 @@ export default function Projects() {
             </button>
           </div>
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={openCreateProjectModal}
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -305,7 +370,7 @@ export default function Projects() {
         </div>
       )}
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Nuevo Proyecto">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingProjectId ? "Editar Proyecto" : "Nuevo Proyecto"}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre del Proyecto</label>
@@ -354,8 +419,37 @@ export default function Projects() {
               />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">Estado</label>
+              <select 
+                value={formData.estado}
+                onChange={e => setFormData({...formData, estado: e.target.value})}
+                className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:outline-none"
+              >
+                <option value="en_propuesta">En Propuesta</option>
+                <option value="aprobado">Aprobado</option>
+                <option value="en_desarrollo">En Desarrollo</option>
+                <option value="entregado">Entregado</option>
+                <option value="pausado">Pausado</option>
+                <option value="cancelado">Cancelado</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">Prioridad</label>
+              <select 
+                value={formData.prioridad}
+                onChange={e => setFormData({...formData, prioridad: e.target.value})}
+                className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:outline-none"
+              >
+                <option value="alta">Alta</option>
+                <option value="media">Media</option>
+                <option value="baja">Baja</option>
+              </select>
+            </div>
+          </div>
           <button type="submit" className="w-full mt-4 bg-zinc-900 text-white py-2 rounded-lg font-medium hover:bg-zinc-800">
-            Crear Proyecto
+            {editingProjectId ? 'Guardar Cambios' : 'Crear Proyecto'}
           </button>
         </form>
       </Modal>
@@ -396,6 +490,23 @@ export default function Projects() {
                 <p className="text-xs font-medium text-zinc-500 mb-1">Entrega Objetivo</p>
                 <p className="text-sm text-zinc-900">{formatDate(selectedProject.fecha_entrega_objetivo)}</p>
               </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => openEditProjectModal(selectedProject)}
+                className="flex items-center justify-center gap-2 flex-1 px-3 py-2 rounded-lg bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800 transition-colors"
+              >
+                <Pencil className="w-4 h-4" />
+                Editar
+              </button>
+              <button
+                onClick={() => handleDeleteProject(selectedProject)}
+                className="flex items-center justify-center gap-2 flex-1 px-3 py-2 rounded-lg bg-red-50 text-red-700 text-sm font-medium border border-red-200 hover:bg-red-100 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Eliminar
+              </button>
             </div>
 
             <div className="border-t border-zinc-200 pt-6">

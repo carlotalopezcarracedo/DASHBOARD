@@ -57,9 +57,23 @@ clientsRouter.put("/:id", (req, res) => {
     req.params.id
   );
   
+  const updatedClient = db.prepare("SELECT * FROM clients WHERE id = ?").get(req.params.id);
+  logActivity("client", req.params.id, "actualizar", (req as any).user?.email || "system", `Cliente actualizado: ${updatedClient ? (updatedClient as any).nombre_cliente : req.params.id}`);
+
   if (estado_relacion !== undefined && estado_relacion !== client.estado_relacion) {
     logActivity("client", req.params.id, "actualizar_estado", (req as any).user?.email || "system", `Estado cambiado a: ${estado_relacion}`);
   }
   
+  res.json(updatedClient);
+});
+
+clientsRouter.delete("/:id", (req, res) => {
+  const client = db.prepare("SELECT * FROM clients WHERE id = ?").get(req.params.id) as any;
+  if (!client) return res.status(404).json({ error: "Client not found" });
+
+  db.prepare("DELETE FROM clients WHERE id = ?").run(req.params.id);
+
+  logActivity("client", req.params.id, "eliminar", (req as any).user?.email || "system", `Cliente eliminado: ${client.nombre_cliente}`);
+
   res.json({ success: true });
 });
