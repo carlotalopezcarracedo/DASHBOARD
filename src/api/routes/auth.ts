@@ -20,7 +20,7 @@ authRouter.post("/login", (req, res) => {
     return res.status(401).json({ error: "Credenciales inválidas" });
   }
 
-  const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
+  const token = jwt.sign({ id: user.id, role: user.role, name: user.name, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
 
   res.json({ token, user: { id: user.id, email: user.email, role: user.role, name: user.name } });
 });
