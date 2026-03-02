@@ -55,3 +55,34 @@ invoicesRouter.put("/:id/status", (req, res) => {
   
   res.json({ success: true });
 });
+
+invoicesRouter.get("/:id/download", (req, res) => {
+  const invoice = db.prepare(`
+    SELECT i.*, c.nombre_cliente, c.nombre_negocio
+    FROM invoices i
+    LEFT JOIN clients c ON i.client_id = c.id
+    WHERE i.id = ?
+  `).get(req.params.id) as any;
+
+  if (!invoice) {
+    return res.status(404).json({ error: "Factura no encontrada" });
+  }
+
+  const content = [
+    `Factura: ${invoice.numero_factura}`,
+    `Cliente: ${invoice.nombre_cliente || "-"}`,
+    `Negocio: ${invoice.nombre_negocio || "-"}`,
+    `Tipo: ${invoice.tipo || "-"}`,
+    `Estado: ${invoice.estado || "-"}`,
+    `Fecha emisión: ${invoice.fecha_emision || "-"}`,
+    `Fecha vencimiento: ${invoice.fecha_vencimiento || "-"}`,
+    `Total: ${invoice.total ?? 0} EUR`,
+    "",
+    "Generado desde KARR.AI Dashboard",
+  ].join("\n");
+
+  const safeNumber = (invoice.numero_factura || "factura").replace(/[^a-zA-Z0-9-_]/g, "_");
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename=\"${safeNumber}.txt\"`);
+  res.send(content);
+});

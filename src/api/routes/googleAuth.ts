@@ -1,24 +1,39 @@
 import { Router } from "express";
-import { getAuthUrl, getTokens } from "../../services/googleCalendar";
+import { getAuthUrl, getMissingGoogleOAuthFields, getTokens } from "../../services/googleCalendar";
 import { db } from "../../db";
 import { authenticateToken } from "./auth";
 
 export const googleAuthRouter = Router();
 
 googleAuthRouter.get("/url", authenticateToken, (req: any, res) => {
-  const url = getAuthUrl();
-  res.json({ url });
+  const missing = getMissingGoogleOAuthFields();
+  if (missing.length > 0) {
+    return res.status(400).json({
+      error: `Google OAuth no configurado. Faltan: ${missing.join(", ")}`,
+      missing,
+    });
+  }
+
+  try {
+    const url = getAuthUrl();
+    res.json({ url });
+  } catch (error) {
+    console.error("Error creating Google auth URL:", error);
+    res.status(500).json({ error: "No se pudo generar la URL de Google OAuth" });
+  }
 });
 
 googleAuthRouter.get("/callback", async (req: any, res) => {
-  const { code, state } = req.query;
-  // In a real app, 'state' should be used to verify the user
-  // For this single-user app, we'll assume the admin is the one connecting
-  
+  const { code } = req.query;
+
+  if (!code) {
+    return res.status(400).send("Falta el parámetro 'code' en el callback de Google");
+  }
+
   try {
     const tokens = await getTokens(code as string);
     const admin = db.prepare("SELECT id FROM users WHERE role = 'admin'").get() as any;
-    
+
     if (admin) {
       db.prepare(`
         INSERT INTO google_tokens (user_id, access_token, refresh_token, expiry_date)
@@ -49,5 +64,10 @@ googleAuthRouter.get("/callback", async (req: any, res) => {
 
 googleAuthRouter.get("/status", authenticateToken, (req: any, res) => {
   const token = db.prepare("SELECT * FROM google_tokens WHERE user_id = ?").get(req.user.id);
-  res.json({ connected: !!token });
+  const missing = getMissingGoogleOAuthFields();
+  res.json({
+    connected: !!token,
+    configured: missing.length === 0,
+    missing,
+  });
 });

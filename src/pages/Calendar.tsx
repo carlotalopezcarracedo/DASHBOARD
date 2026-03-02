@@ -23,6 +23,11 @@ import { es } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 
 type ViewMode = 'month' | 'week' | 'day';
+type GoogleStatus = {
+  connected: boolean;
+  configured?: boolean;
+  missing?: string[];
+};
 
 export default function CalendarView() {
   const token = useAuthStore((state) => state.token);
@@ -30,6 +35,8 @@ export default function CalendarView() {
   const [view, setView] = useState<ViewMode>('month');
   const [events, setEvents] = useState<any[]>([]);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [googleStatus, setGoogleStatus] = useState<GoogleStatus | null>(null);
+  const [googleError, setGoogleError] = useState('');
 
   useEffect(() => {
     let start, end;
@@ -107,16 +114,36 @@ export default function CalendarView() {
   };
 
   const connectGoogle = async () => {
+    setGoogleError('');
     const res = await fetch('/api/auth/google/url', {
       headers: { Authorization: `Bearer ${token}` }
     });
-    const { url } = await res.json();
-    window.open(url, 'google_auth', 'width=600,height=700');
+    const data = await res.json();
+
+    if (!res.ok || !data.url) {
+      setGoogleError(data.error || 'No se pudo iniciar la conexión con Google Calendar.');
+      return;
+    }
+
+    const popup = window.open(data.url, 'google_auth', 'width=600,height=700');
+    if (!popup) {
+      setGoogleError('Tu navegador bloqueó la ventana emergente de Google. Permite popups para continuar.');
+    }
   };
+
+  useEffect(() => {
+    fetch('/api/auth/google/status', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setGoogleStatus(data))
+      .catch(() => setGoogleStatus(null));
+  }, [token]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
+        setGoogleError('');
         const start = format(startOfMonth(currentDate), 'yyyy-MM-dd');
         const end = format(endOfMonth(currentDate), 'yyyy-MM-dd');
         fetch(`/api/calendar/events?start=${start}&end=${end}`, {
@@ -127,6 +154,13 @@ export default function CalendarView() {
             setEvents(data.events || []);
             setSubscriptions(data.subscriptions || []);
           });
+
+        fetch('/api/auth/google/status', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+          .then(res => res.json())
+          .then(data => setGoogleStatus(data))
+          .catch(() => setGoogleStatus(null));
       }
     };
     window.addEventListener('message', handleMessage);
@@ -185,6 +219,17 @@ export default function CalendarView() {
           </button>
         </div>
       </div>
+
+      {googleError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {googleError}
+        </div>
+      )}
+      {googleStatus && googleStatus.configured === false && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Configura Google OAuth en `.env.local`: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET y GOOGLE_REDIRECT_URI.
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/50">

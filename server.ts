@@ -1,8 +1,12 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import cors from "cors";
+import dotenv from "dotenv";
 import { initDb } from "./src/db/init";
 import { apiRouter } from "./src/api";
+
+dotenv.config({ path: ".env" });
+dotenv.config({ path: ".env.local", override: true });
 
 async function startServer() {
   const app = express();

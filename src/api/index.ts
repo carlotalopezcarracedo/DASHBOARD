@@ -10,6 +10,7 @@ import { googleAuthRouter } from "./routes/googleAuth";
 import { ticketsRouter } from "./routes/tickets";
 import { servicesRouter } from "./routes/services";
 import { activityRouter } from "./routes/activity";
+import { settingsRouter } from "./routes/settings";
 
 export const apiRouter = Router();
 
@@ -24,6 +25,7 @@ apiRouter.use("/calendar", calendarRouter);
 apiRouter.use("/tickets", ticketsRouter);
 apiRouter.use("/services", servicesRouter);
 apiRouter.use("/activity", activityRouter);
+apiRouter.use("/settings", settingsRouter);
 
 apiRouter.get("/health", (req, res) => {
   res.json({ status: "ok" });

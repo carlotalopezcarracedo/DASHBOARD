@@ -33,7 +33,14 @@ export const authenticateToken = (req: any, res: any, next: any) => {
 
   jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
     if (err) return res.sendStatus(403);
-    req.user = user;
+
+    if (user?.id && !user?.email) {
+      const dbUser = db.prepare("SELECT email, role, name FROM users WHERE id = ?").get(user.id) as any;
+      req.user = dbUser ? { ...user, ...dbUser } : user;
+    } else {
+      req.user = user;
+    }
+
     next();
   });
 };

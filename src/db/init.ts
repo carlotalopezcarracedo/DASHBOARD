@@ -13,6 +13,25 @@ export function initDb() {
       name TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id TEXT PRIMARY KEY,
+      email_tasks INTEGER DEFAULT 1,
+      email_tickets INTEGER DEFAULT 1,
+      push_messages INTEGER DEFAULT 0,
+      weekly_digest INTEGER DEFAULT 1,
+      updated_at TEXT,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      user_id TEXT UNIQUE,
+      key_hash TEXT,
+      key_preview TEXT,
+      created_at TEXT,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS google_tokens (
       user_id TEXT PRIMARY KEY,
       access_token TEXT,
@@ -245,6 +264,26 @@ export function initDb() {
     // Seed initial data
     seedData();
   }
+
+  ensureUserDefaults();
+}
+
+function ensureUserDefaults() {
+  const users = db.prepare("SELECT id FROM users").all() as Array<{ id: string }>;
+  const now = new Date().toISOString();
+  const insertPreference = db.prepare(`
+    INSERT INTO user_preferences (user_id, email_tasks, email_tickets, push_messages, weekly_digest, updated_at)
+    VALUES (?, 1, 1, 0, 1, ?)
+    ON CONFLICT(user_id) DO NOTHING
+  `);
+
+  const transaction = db.transaction(() => {
+    for (const user of users) {
+      insertPreference.run(user.id, now);
+    }
+  });
+
+  transaction();
 }
 
 function seedData() {

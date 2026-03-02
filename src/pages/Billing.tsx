@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/auth';
-import { Plus, Download, Check, MoreVertical, Clock, FileText } from 'lucide-react';
+import { Plus, Download, MoreVertical, Clock, FileText } from 'lucide-react';
 import { formatDate, formatCurrency } from '../lib/utils';
 import Modal from '../components/Modal';
 
@@ -8,6 +8,7 @@ export default function Billing() {
   const token = useAuthStore((state) => state.token);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
@@ -86,6 +87,33 @@ export default function Billing() {
     fetchInvoiceHistory(invoice.id);
   };
 
+  const downloadInvoice = async (invoiceId: string) => {
+    setDownloadingInvoiceId(invoiceId);
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/download`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) return;
+
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const fileNameMatch = disposition.match(/filename="(.+)"/);
+      const fileName = fileNameMatch?.[1] || `factura-${invoiceId}.txt`;
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloadingInvoiceId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -144,8 +172,12 @@ export default function Billing() {
                     <div className="flex items-center justify-end gap-2">
                       <button 
                         title="Descargar PDF"
-                        onClick={(e) => e.stopPropagation()}
-                        className="p-1.5 text-zinc-400 hover:text-zinc-900 rounded bg-white border border-zinc-200 shadow-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadInvoice(invoice.id);
+                        }}
+                        disabled={downloadingInvoiceId === invoice.id}
+                        className="p-1.5 text-zinc-400 hover:text-zinc-900 rounded bg-white border border-zinc-200 shadow-sm disabled:opacity-50"
                       >
                         <Download className="w-4 h-4" />
                       </button>
